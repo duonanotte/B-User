@@ -8,7 +8,6 @@ import functools
 import traceback
 
 from urllib.parse import unquote, quote
-from aiocfscrape import CloudflareScraper
 from aiohttp_proxy import ProxyConnector
 from datetime import  datetime, timedelta
 from better_proxy import Proxy
