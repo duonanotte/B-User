@@ -420,47 +420,60 @@ class Tapper:
                 logger.info(
                     f"{self.session_name} | Left: <lc>{formatted_time}</lc> seconds | Alive: <lc>{user_info.get('isAlive')}</lc>")
 
-                # Получаем информацию о текущем кэмпе
                 await self.get_user_current_camp(http_client)
 
-                # Если пользователь не в кэмпе, пытаемся присоединиться
                 if not user_info.get('currentCamp'):
                     await self.user_camp(http_client)
 
-                # Получаем список заданий
                 tasks = await self.get_task(http_client=http_client)
+                if tasks is None:
+                    logger.error(f"{self.session_name} | Failed to get tasks, response is None")
+                    await asyncio.sleep(300)
+                    continue
 
-                # Определяем разрешенные типы заданий
-                allowed_task_types = ["JOIN_CAMP", "POST_STORY", "LINK_CLICK"]
+                response = tasks.get('response')
+                if not response:
+                    logger.error(f"{self.session_name} | No tasks in response")
+                    await asyncio.sleep(300)
+                    continue
 
-                # Обрабатываем каждое задание
-                for task in tasks.get('response', {}):
+                allowed_task_types = ["JOIN_CAMP", "POST_STORY", "LINK_CLICK", "REGEX_STRING"]
+
+                for task in response:
+                    if not isinstance(task, dict):
+                        logger.error(f"{self.session_name} | Invalid task format: {task}")
+                        continue
+
                     if not task.get('isCompleted') and task.get('type') in allowed_task_types:
                         task_type = task.get('type')
                         task_name = task.get('taskName')
                         task_id = task.get('uuid')
                         reward = task.get('secondsAmount')
 
-                        # logger.info(
-                        #     f"{self.session_name} | Start task: <lc>{task_name}</lc> (Тип: {task_type})")
+                        if task_type == 'REGEX_STRING':
+                            try:
+                                result = await self.add_gem_last_name(http_client=http_client, task_id=task_id)
+                                if result:
+                                    logger.success(
+                                        f"{self.session_name} | Task <cyan>'{task_name}'</cyan> completed! Reward: <lc>+{reward:,}</lc>")
+                                await asyncio.sleep(15)
+                                continue
+                            except Exception as e:
+                                logger.error(f"{self.session_name} | Failed to complete REGEX_STRING task: {str(e)}")
+                                continue
 
                         await asyncio.sleep(randint(3, 10))
 
-                        # Выполняем задание и получаем награду
-                        result = await self.done_task(http_client=http_client, task_id=task_id)
-                        if result:
-                            logger.success(
-                                f"{self.session_name} | Task '{task_name}' is completed! Received reward: <lc>+{reward:,}</lc>")
-
-                        # Задержка между заданиями
-                        await asyncio.sleep(15)
-
-                        if task.get('type') == 'REGEX_STRING':
-                            result = await self.add_gem_last_name(http_client=http_client, task_id=task['uuid'])
+                        try:
+                            result = await self.done_task(http_client=http_client, task_id=task_id)
                             if result:
-                                logger.info(
-                                    f"{self.session_name} | Task <lc>{task.get('taskName')}</lc> completed! | Reward: <lc>+{task.get('secondsAmount')}</lc>")
+                                logger.success(
+                                    f"{self.session_name} | Task <cyan>'{task_name}'</cyan> completed! Received reward: <lc>+{reward:,}</lc>")
+                        except Exception as e:
+                            logger.error(f"{self.session_name} | Failed to complete task {task_name}: {str(e)}")
                             continue
+
+                        await asyncio.sleep(15)
 
             except aiohttp.ClientConnectorError as error:
                 delay = random.randint(1800, 3600)
